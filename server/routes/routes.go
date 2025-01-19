@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"server/routes/authroutes"
+	authRoutes "server/routes/auth"
 
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterAllRouterGroups(server *gin.Engine) {
-	allRoutes := server.Group("/api")
+	allRouterGroups := server.Group("/api")
 
-	authroutes.RegisterAuthRoutes(allRoutes)
+	authRoutes.RegisterAuthRoutes(allRouterGroups)
 }

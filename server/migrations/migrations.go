@@ -7,4 +7,6 @@ import (
 
 func Migrate() {
 	db.DB.AutoMigrate(&models.Users{})
+	db.DB.AutoMigrate(&models.UserProfiles{})
+	db.DB.AutoMigrate(&models.WeightLog{})
 }
