@@ -52,7 +52,7 @@ func RegisterUser(c *gin.Context) {
 		Users: user,
 	}
 
-	token, err := userToken.IssueToken()
+	token, err := userToken.IssueJWTToken()
 
 	if err != nil {
 		logger.Error(err, "Error creating user token")
