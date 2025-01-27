@@ -1,21 +1,36 @@
 package tokenService
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"image/png"
 	"os"
 	"server/models"
+	"server/utils/logger"
+	"server/utils/response"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/pquerna/otp/totp"
 )
 
 type UserToken struct {
 	models.Users
+}
+
+type JwtClaims struct {
+	UserId       uint   `json:"user_id"`
+	Mail         string `json:"mail"`
+	Type         string `json:"type"`
+	Status       string `json:"status"`
+	TwoFaEnabled bool   `json:"2fa_enabled"`
+	jwt.RegisteredClaims
 }
 
 type TempToken struct {
@@ -25,16 +40,42 @@ type TempToken struct {
 
 func (user UserToken) IssueJWTToken() (string, error) {
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":          user.Id,
-		"mail":        user.Mail,
-		"type":        user.Type,
-		"status":      user.Status,
-		"exp":         time.Now().Unix() + (60 * 60 * 24 * 90),
-		"2fa_enabled": user.TwoFaEnabled,
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, JwtClaims{
+		UserId:       user.Id,
+		Mail:         user.Mail,
+		Type:         user.Type,
+		Status:       user.Status,
+		TwoFaEnabled: user.TwoFaEnabled,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(90 * 24 * time.Hour)),
+		},
 	})
 
 	return token.SignedString([]byte(os.Getenv("HMAC_SECRET")))
+}
+
+func VerifyJWTToken(tokenString string) (bool, *JwtClaims) {
+	claims := &JwtClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		// Verify signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		// Replace this with your actual JWT secret key
+		return []byte(os.Getenv("HMAC_SECRET")), nil
+	})
+
+	if err != nil {
+		logger.Error(err, "Error validating token")
+		return false, nil
+	}
+
+	if !token.Valid || time.Now().Unix() > claims.ExpiresAt.Unix() {
+		logger.Error(nil, "Token expired")
+		return false, nil
+	}
+
+	return true, claims
 }
 
 func (user UserToken) GenerateTempToken() (string, error) {
@@ -89,4 +130,38 @@ func (user UserToken) VerifyTempToken(signedToken string) (uint, error) {
 	}
 
 	return token.UserId, nil
+}
+
+func (u UserToken) GenerateTopt() (string, string, *response.ErrorObject) {
+	logger.Info("Generating totp")
+
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "NutriCamAi",
+		AccountName: u.Mail,
+	})
+
+	if err != nil {
+		logger.Error(err, "Error generating totp")
+		errObj := response.NewErrorResponse(500, nil, "Something went wrong")
+		return "", "", &errObj
+	}
+
+	var buf bytes.Buffer
+	img, err := key.Image(200, 200)
+	if err != nil {
+		logger.Error(err, "Error generating totp")
+		errObj := response.NewErrorResponse(500, nil, "Something went wrong")
+		return "", "", &errObj
+	}
+	png.Encode(&buf, img)
+
+	return key.Secret(), base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+}
+
+func VerifyTotp(code string, secret string) bool {
+	valid := totp.Validate(code, secret)
+	if !valid {
+		return false
+	}
+	return true
 }

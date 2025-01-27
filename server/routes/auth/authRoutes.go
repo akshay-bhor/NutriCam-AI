@@ -2,6 +2,7 @@ package authRoutes
 
 import (
 	authController "server/controllers/auth"
+	authMiddleware "server/middlewares/auth"
 	"server/middlewares/validation"
 
 	"github.com/gin-gonic/gin"
@@ -17,4 +18,6 @@ func RegisterAuthRoutes(routerGroup *gin.RouterGroup) {
 	})
 
 	auth.POST("/register", validation.RegisterRequestValidation, authController.RegisterUser)
+
+	auth.GET("/totp", authMiddleware.IsAuthenticated, authMiddleware.RequireAuth, authController.SetupTopt)
 }

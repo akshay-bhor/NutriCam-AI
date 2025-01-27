@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"server/db"
 	"server/middlewares/validation"
+	"server/models"
 	"server/sevices/authService"
 	"server/sevices/tokenService"
 	"server/utils/logger"
@@ -62,5 +63,28 @@ func RegisterUser(c *gin.Context) {
 	}
 
 	response.SuccessResponse(c, gin.H{"token": token}, "User created successfully")
+}
 
+func SetupTopt(c *gin.Context) {
+	reqBody, _ := c.Get("user")
+	user, ok := reqBody.(models.Users)
+
+	if !ok {
+		errObj := response.NewErrorResponse(400, nil, "Something went wrong")
+		response.ErrorResponse(c, errObj)
+		return
+	}
+
+	userToken := tokenService.UserToken{
+		Users: user,
+	}
+
+	key, img, errObj := userToken.GenerateTopt()
+
+	if errObj != nil {
+		response.ErrorResponse(c, *errObj)
+		return
+	}
+
+	response.SuccessResponse(c, gin.H{"secret": key, "qr_code": img}, "Success")
 }
